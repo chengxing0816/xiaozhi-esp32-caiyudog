@@ -33,6 +33,7 @@
         <button class="tab active" data-tab="drive"><span class="tab-ico">🕹️</span>遥控</button>
         <button class="tab" data-tab="emotion"><span class="tab-ico">😊</span>表情</button>
         <button class="tab" data-tab="lamp"><span class="tab-ico">💡</span>灯光</button>
+        <button class="tab" data-tab="music"><span class="tab-ico">🎵</span>音乐</button>
         <button class="tab" data-tab="settings"><span class="tab-ico">⚙️</span>设置</button>
     </nav>
 
@@ -157,6 +158,55 @@
             </div>
 
             <div class="status-line" id="lamp-status">灯光状态：--</div>
+        </section>
+
+        <section class="panel" id="panel-music">
+            <div class="section-label">曲库 <span id="music-lib-count"></span></div>
+            <div class="card">
+                <div class="toolbar">
+                    <button class="pill" id="btn-music-refresh">
+                        <span class="pill-ico">⟳</span><span>读取曲库</span>
+                    </button>
+                </div>
+            </div>
+            <div class="recent-list" id="music-library">
+                <div class="hint action-hint">点上面的按钮，从 NAS 读取曲库，点歌名直接播放。</div>
+            </div>
+
+            <div class="section-label">音频地址</div>
+            <div class="hint action-hint">
+                只支持 <b>http://</b> 直链的 Ogg/Opus 文件，不是 mp3；地址里别带空格。
+                局域网内建议直接写 IP，例如 http://192.168.1.10:8081/music/song.ogg
+            </div>
+            <div class="card">
+                <input type="url" class="text-input" id="music-url" autocomplete="off"
+                       spellcheck="false" inputmode="url"
+                       placeholder="http://192.168.1.10:8081/music/song.ogg"
+                       aria-label="音频地址">
+            </div>
+            <div class="toolbar">
+                <button class="pill" id="btn-music-play">
+                    <span class="pill-ico">▶</span><span>播放</span>
+                </button>
+                <button class="pill accent-off" id="btn-music-stop">
+                    <span class="pill-ico">⏹</span><span>停止</span>
+                </button>
+            </div>
+
+            <div class="section-label">音量</div>
+            <div class="card">
+                <div class="bright-row">
+                    <input type="range" id="music-volume" min="0" max="100" step="1" value="70">
+                    <span class="rgb-val" id="music-volume-val">70%</span>
+                </div>
+            </div>
+
+            <div class="section-label">最近播放</div>
+            <div class="recent-list" id="music-recent">
+                <div class="hint action-hint">播过的歌会留在这里，点一下就能重新放。</div>
+            </div>
+
+            <div class="status-line" id="music-status">未在播放</div>
         </section>
 
         <section class="panel" id="panel-settings">

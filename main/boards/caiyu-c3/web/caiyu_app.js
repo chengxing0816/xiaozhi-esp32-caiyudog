@@ -123,6 +123,16 @@
         trimSave: document.getElementById('btn-trim-save'),
         trimReset: document.getElementById('btn-trim-reset'),
         trimStatus: document.getElementById('trim-status'),
+        musicUrl: document.getElementById('music-url'),
+        musicPlay: document.getElementById('btn-music-play'),
+        musicStop: document.getElementById('btn-music-stop'),
+        musicVolume: document.getElementById('music-volume'),
+        musicVolumeVal: document.getElementById('music-volume-val'),
+        musicRecent: document.getElementById('music-recent'),
+        musicLibrary: document.getElementById('music-library'),
+        musicLibCount: document.getElementById('music-lib-count'),
+        musicRefresh: document.getElementById('btn-music-refresh'),
+        musicStatus: document.getElementById('music-status'),
     };
 
     let ws = null;
@@ -145,6 +155,12 @@
     let joyDir = null;
     let joyDragging = false;
     let actionSpeed = 100;
+
+    const MUSIC_URL_KEY = 'caiyu.music.url';
+    const MUSIC_HISTORY_KEY = 'caiyu.music.history';
+    const MUSIC_HISTORY_MAX = 6;
+    let musicTimer = null;
+    const music = { playing: false, title: '', volume: 70 };
 
     const lamp = { on: false, mode: 0, brightness: 80, speed: 100, r: 255, g: 107, b: 53 };
 
@@ -190,6 +206,7 @@
             send({ type: 'speed' });
             send({ type: 'chat' });
             send({ type: 'trim' });
+            send({ type: 'music' });
             startPing();
         };
 
@@ -293,6 +310,10 @@
 
             case 'trim':
                 applyTrimState(msg);
+                break;
+
+            case 'music':
+                applyMusicState(msg);
                 break;
 
             default:
@@ -757,6 +778,241 @@
         }
     });
 
+    // ---------------- 音乐 ----------------
+
+    function musicTitle(url) {
+        try {
+            const clean = String(url).split('?')[0];
+            const name = clean.substring(clean.lastIndexOf('/') + 1);
+            const dot = name.lastIndexOf('.');
+            const base = dot > 0 ? name.substring(0, dot) : name;
+            return decodeURIComponent(base) || '音乐';
+        } catch (err) {
+            return '音乐';
+        }
+    }
+
+    function loadMusicHistory() {
+        try {
+            const raw = localStorage.getItem(MUSIC_HISTORY_KEY);
+            const list = raw ? JSON.parse(raw) : [];
+            return Array.isArray(list) ? list.filter((item) => typeof item === 'string') : [];
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function renderMusicHistory() {
+        const list = loadMusicHistory();
+        el.musicRecent.replaceChildren();
+        if (list.length === 0) {
+            const tip = document.createElement('div');
+            tip.className = 'hint action-hint';
+            tip.textContent = '播过的歌会留在这里，点一下就能重新放。';
+            el.musicRecent.appendChild(tip);
+            return;
+        }
+        list.forEach((url) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'recent-item';
+            button.title = url;
+
+            const ico = document.createElement('span');
+            ico.className = 'play-ico';
+            ico.textContent = '▶';
+
+            const name = document.createElement('span');
+            name.className = 'name';
+            name.textContent = musicTitle(url);
+
+            button.append(ico, name);
+            button.addEventListener('click', () => {
+                el.musicUrl.value = url;
+                playMusic(url);
+            });
+            el.musicRecent.appendChild(button);
+        });
+    }
+
+    function rememberMusic(url) {
+        const list = loadMusicHistory().filter((item) => item !== url);
+        list.unshift(url);
+        try {
+            localStorage.setItem(MUSIC_HISTORY_KEY, JSON.stringify(list.slice(0, MUSIC_HISTORY_MAX)));
+            localStorage.setItem(MUSIC_URL_KEY, url);
+        } catch (err) {
+            // 无痕模式写不进去，忽略
+        }
+        renderMusicHistory();
+    }
+
+    function playMusic(url) {
+        const target = (url || '').trim();
+        if (!target) {
+            el.musicStatus.textContent = '先填一个音频地址';
+            return;
+        }
+        if (!/^http:\/\//i.test(target)) {
+            el.musicStatus.textContent = '只能播 http:// 开头的地址，设备不认 https';
+            return;
+        }
+        if (send({ type: 'music', action: 'play', url: target })) {
+            el.musicStatus.textContent = '正在连接…';
+            el.musicStatus.classList.add('playing');
+            log(`播放：${musicTitle(target)}`);
+            rememberMusic(target);
+        }
+    }
+
+    // ---------------- 曲库（从 NAS 读取，点歌名直接播放） ----------------
+
+    const MUSIC_LIB_BASE = 'http://192.168.1.111:8081';
+
+    async function loadMusicLibrary() {
+        const box = el.musicLibrary;
+        if (!box) {
+            return;
+        }
+        box.replaceChildren();
+        const tip = document.createElement('div');
+        tip.className = 'hint action-hint';
+        tip.textContent = '正在读取曲库…';
+        box.appendChild(tip);
+        if (el.musicLibCount) {
+            el.musicLibCount.textContent = '';
+        }
+
+        try {
+            const res = await fetch(`${MUSIC_LIB_BASE}/api/search/esp/list?pageNum=1&pageSize=300`, {
+                cache: 'no-store'
+            });
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            const rows = (data && data.data && data.data.rows) || [];
+            box.replaceChildren();
+            if (rows.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'hint action-hint';
+                empty.textContent = '曲库是空的。';
+                box.appendChild(empty);
+                return;
+            }
+            rows.forEach((row) => {
+                const url = row.audioUrl || '';
+                if (!url) {
+                    return;
+                }
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'recent-item';
+                button.title = url;
+
+                const ico = document.createElement('span');
+                ico.className = 'play-ico';
+                ico.textContent = '♪';
+
+                const name = document.createElement('span');
+                name.className = 'name';
+                name.textContent = row.songName || row.songId || musicTitle(url);
+
+                button.append(ico, name);
+                if (row.artist) {
+                    const artist = document.createElement('span');
+                    artist.className = 'hint action-hint';
+                    artist.textContent = row.artist;
+                    button.append(artist);
+                }
+                button.addEventListener('click', () => {
+                    el.musicUrl.value = url;
+                    playMusic(url);
+                });
+                box.appendChild(button);
+            });
+            if (el.musicLibCount) {
+                el.musicLibCount.textContent = `（${rows.length} 首）`;
+            }
+        } catch (err) {
+            box.replaceChildren();
+            const fail = document.createElement('div');
+            fail.className = 'hint action-hint';
+            fail.textContent = `曲库读取失败：${(err && err.message) || err}。确认 NAS 音乐服务在线。`;
+            box.appendChild(fail);
+        }
+    }
+
+    function applyMusicState(state) {
+        music.playing = !!state.playing;
+        if (typeof state.title === 'string' && state.title) {
+            music.title = state.title;
+        }
+        if (typeof state.volume === 'number') {
+            music.volume = state.volume;
+            el.musicVolume.value = state.volume;
+            el.musicVolumeVal.textContent = `${state.volume}%`;
+        }
+
+        const status = el.musicStatus;
+        if (state.error) {
+            status.textContent = `播放失败：${state.error}`;
+            status.classList.remove('playing');
+            log(`音乐：${state.error}`, 'warn');
+            return;
+        }
+        if (music.playing) {
+            status.textContent = `正在播放：${music.title || '音乐'}`;
+            status.classList.add('playing');
+        } else {
+            status.textContent = music.title ? `已停止：${music.title}` : '未在播放';
+            status.classList.remove('playing');
+        }
+    }
+
+    el.musicPlay.addEventListener('click', () => playMusic(el.musicUrl.value));
+    if (el.musicRefresh) {
+        el.musicRefresh.addEventListener('click', () => {
+            loadMusicLibrary();
+        });
+    }
+
+    el.musicUrl.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            playMusic(el.musicUrl.value);
+        }
+    });
+
+    el.musicStop.addEventListener('click', () => {
+        if (send({ type: 'music', action: 'stop' })) {
+            el.musicStatus.textContent = '正在停止…';
+        }
+    });
+
+    el.musicVolume.addEventListener('input', () => {
+        const value = Number(el.musicVolume.value);
+        el.musicVolumeVal.textContent = `${value}%`;
+        if (musicTimer) {
+            clearTimeout(musicTimer);
+        }
+        musicTimer = setTimeout(() => {
+            musicTimer = null;
+            send({ type: 'music', action: 'volume', value });
+        }, SLIDER_THROTTLE);
+    });
+
+    try {
+        const savedUrl = localStorage.getItem(MUSIC_URL_KEY);
+        if (savedUrl) {
+            el.musicUrl.value = savedUrl;
+        }
+    } catch (err) {
+        // 无痕模式读不到，忽略
+    }
+    renderMusicHistory();
+    loadMusicLibrary();
+
     el.tabbar.addEventListener('click', (event) => {
         const tab = event.target.closest('.tab');
         if (!tab) {
@@ -768,6 +1024,9 @@
         document.querySelectorAll('.panel').forEach((panel) => {
             panel.classList.toggle('active', panel.id === `panel-${tab.dataset.tab}`);
         });
+        if (tab.dataset.tab === 'music') {
+            send({ type: 'music' });
+        }
     });
 
     el.auto.addEventListener('click', () => {
