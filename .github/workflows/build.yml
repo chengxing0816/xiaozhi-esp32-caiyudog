@@ -1,0 +1,46 @@
+name: build-caiyu-c3
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache ESP-IDF tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.espressif
+          key: idf-v6.0.2-esp32c3-tools-v1
+
+      - name: Install ESP-IDF v6.0.2
+        run: |
+          git clone -b v6.0.2 --depth 1 --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
+          cd ~/esp-idf
+          ./install.sh esp32c3
+
+      - name: Build caiyu-c3
+        run: |
+          . ~/esp-idf/export.sh
+          python scripts/build.py caiyu-c3
+
+      - name: Collect binaries
+        run: |
+          mkdir -p out
+          cp -v build/bootloader/bootloader.bin out/ 2>/dev/null || true
+          cp -v build/partition_table/partition-table.bin out/ 2>/dev/null || true
+          cp -v build/*.bin out/ 2>/dev/null || true
+          cp -v build/flasher_args.json out/ 2>/dev/null || true
+          ls -l out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: caiyu-c3-bin
+          path: out
+          if-no-files-found: error
