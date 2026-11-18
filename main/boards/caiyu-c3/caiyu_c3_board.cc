@@ -575,9 +575,13 @@ public:
     }
 
     virtual AudioCodec* GetAudioCodec() override {
-        static NoAudioCodecSimplex audio_codec(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
+        // ESP32-C3 只有 I2S0 一个控制器。原 Simplex 实现会去开 I2S1（C3 上不存在），
+        // i2s_new_channel 返回 ESP_ERR_INVALID_ARG 触发 abort（表现为白屏）。
+        // 改为单端口全双工：喇叭与麦克风共用 BCLK/WS。
+        // 硬件需飞线：MIC SCK -> GPIO3（与 SPK BCLK 同点），MIC WS -> GPIO4（与 SPK LRCK 同点）。
+        static NoAudioCodecDuplex audio_codec(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
             AUDIO_I2S_SPK_GPIO_BCLK, AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT,
-            AUDIO_I2S_MIC_GPIO_SCK, AUDIO_I2S_MIC_GPIO_WS, AUDIO_I2S_MIC_GPIO_DIN);
+            AUDIO_I2S_MIC_GPIO_DIN);
         return &audio_codec;
     }
 

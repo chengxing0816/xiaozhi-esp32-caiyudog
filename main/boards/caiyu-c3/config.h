@@ -3,7 +3,9 @@
 
 #include <driver/gpio.h>
 
-#define AUDIO_INPUT_SAMPLE_RATE  16000
+// ESP32-C3 只有一个 I2S 控制器：输入/输出共用同一组 BCLK/WS，采样率必须一致。
+// 麦克风按 24kHz 采集，AudioService 会自动重采样到 16kHz 再编码上传。
+#define AUDIO_INPUT_SAMPLE_RATE  24000
 #define AUDIO_OUTPUT_SAMPLE_RATE 24000
 
 #define AUDIO_I2S_MIC_GPIO_WS   GPIO_NUM_7
