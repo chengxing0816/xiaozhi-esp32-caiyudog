@@ -10,6 +10,9 @@
 #include "strip_controller.h"
 
 #include <esp_log.h>
+#include <esp_rom_gpio.h>
+#include <soc/gpio_sig_map.h>
+#include <driver/gpio.h>
 #include <wifi_manager.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_ops.h>
@@ -582,6 +585,19 @@ public:
         static NoAudioCodecDuplex audio_codec(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
             AUDIO_I2S_SPK_GPIO_BCLK, AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT,
             AUDIO_I2S_MIC_GPIO_DIN);
+        // 【免飞线补丁】ESP32-C3 的 GPIO matrix 允许同一个外设信号扇出到多个引脚。
+        // 麦克风 INMP441 的 SCK/WS 接在 GPIO6/7，而 I2S0 时钟只从 GPIO3/4 输出，
+        // 导致麦克风收不到时钟。这里把 I2S0 的 BCK/WS 额外映射一份到 GPIO6/7，
+        // 使麦克风与功放共用同一组时钟，无需改焊任何元件。
+        static bool clock_mirrored = []() {
+            gpio_set_direction(GPIO_NUM_6, GPIO_MODE_OUTPUT);
+            gpio_set_direction(GPIO_NUM_7, GPIO_MODE_OUTPUT);
+            esp_rom_gpio_connect_out_signal(GPIO_NUM_6, I2SO_BCK_OUT_IDX, false, false);
+            esp_rom_gpio_connect_out_signal(GPIO_NUM_7, I2SO_WS_OUT_IDX, false, false);
+            ESP_LOGI(TAG, "I2S0 BCLK/WS mirrored to GPIO6/7 for INMP441 (no rework)");
+            return true;
+        }();
+        (void)clock_mirrored;
         return &audio_codec;
     }
 
